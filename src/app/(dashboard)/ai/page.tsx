@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import Image from "next/image";
 import { Upload, BrainCircuit, CheckCircle, Leaf, Droplets, Bug, Microscope } from "lucide-react";
 import { Topbar } from "@/components/layout/Topbar";
 import { aiAnalyses } from "@/lib/mockData";
@@ -91,7 +92,7 @@ export default function AIPage() {
               />
               {previewUrl ? (
                 <div className="flex flex-col items-center gap-3">
-                  <img src={previewUrl} alt="Preview" className="w-40 h-40 object-cover rounded-[8px] shadow-sm" />
+                  <Image src={previewUrl} alt="Preview" width={160} height={160} className="w-40 h-40 object-cover rounded-[8px] shadow-sm" />
                   <p className="text-[0.875rem] text-[#5C7A6A]">Click để thay ảnh khác</p>
                 </div>
               ) : (

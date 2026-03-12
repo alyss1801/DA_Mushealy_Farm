@@ -14,6 +14,7 @@ interface AppState {
   // Devices
   devices: Device[];
   toggleDevice: (deviceId: string) => void;
+  addDevice: (device: Device) => void;
 
   // Alerts
   alerts: Alert[];
@@ -42,6 +43,10 @@ export const useAppStore = create<AppState>((set) => ({
       devices: state.devices.map((d) =>
         d.id === deviceId ? { ...d, isOn: !d.isOn, lastUpdated: new Date().toISOString() } : d
       ),
+    })),
+  addDevice: (device) =>
+    set((state) => ({
+      devices: [device, ...state.devices],
     })),
 
   alerts: initialAlerts,

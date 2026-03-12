@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { useParams, notFound } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
-import { gardens, sensorSummaries, systemLogs } from "@/lib/mockData";
+import { gardens, sensorSummaries, systemLogs, zoneThresholds } from "@/lib/mockData";
 import { useAppStore } from "@/lib/store";
 import { Badge, StatusDot, EmptyState } from "@/components/shared/index";
 import { ToggleSwitch } from "@/components/shared/ToggleSwitch";
 import { cn, timeAgo, formatDateTime } from "@/lib/utils";
 import {
   Thermometer, Droplets, Droplet, Sun, Cpu, Power,
-  AlertTriangle, ClipboardList, LayoutDashboard
+  AlertTriangle, ClipboardList, LayoutDashboard, SlidersHorizontal, Save
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -21,6 +21,7 @@ const tabs = [
   { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
   { id: "devices", label: "Thiết bị", icon: Cpu },
   { id: "alerts", label: "Cảnh báo", icon: AlertTriangle },
+  { id: "thresholds", label: "Ngưỡng cảnh báo", icon: SlidersHorizontal },
   { id: "logs", label: "Nhật ký", icon: ClipboardList },
 ];
 
@@ -39,12 +40,26 @@ export default function GardenDetailPage() {
   const toggleDevice = useAppStore((s) => s.toggleDevice);
   const addToast = useAppStore((s) => s.addToast);
   const storeAlerts = useAppStore((s) => s.alerts);
+  const thresholdTemplate = zoneThresholds.find((threshold) => threshold.gardenId === gardenId) ?? {
+    gardenId,
+    temperature: { min: 18, max: 35 },
+    humidityAir: { min: 45, max: 85 },
+    humiditySoil: { min: 40, max: 80 },
+    light: { min: 4000, max: 24000 },
+  };
+  const [thresholdForm, setThresholdForm] = useState(thresholdTemplate);
 
   if (!garden || !sensors) return notFound();
 
   const gardenDevices = storeDevices.filter((d) => d.gardenId === gardenId);
   const gardenAlerts = storeAlerts.filter((a) => a.gardenId === gardenId);
   const gardenLogs = systemLogs.filter((l) => l.gardenId === gardenId);
+  const thresholdRows = [
+    { key: "temperature", label: "Nhiệt độ", unit: "°C", accent: "#E67E22" },
+    { key: "humidityAir", label: "Độ ẩm không khí", unit: "%", accent: "#2980B9" },
+    { key: "humiditySoil", label: "Độ ẩm đất", unit: "%", accent: "#1B4332" },
+    { key: "light", label: "Ánh sáng", unit: "lux", accent: "#F39C12" },
+  ] as const;
 
   const metrics = [
     { icon: Thermometer, label: "Nhiệt độ", value: `${sensors.temperature}`, unit: "°C" },
@@ -52,6 +67,20 @@ export default function GardenDetailPage() {
     { icon: Droplet, label: "Độ ẩm đất", value: `${sensors.humiditySoil}`, unit: "%" },
     { icon: Sun, label: "Ánh sáng", value: `${(sensors.light / 1000).toFixed(1)}`, unit: "klux" },
   ];
+
+  const updateThreshold = (
+    key: (typeof thresholdRows)[number]["key"],
+    bound: "min" | "max",
+    value: string
+  ) => {
+    setThresholdForm((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        [bound]: Number(value),
+      },
+    }));
+  };
 
   return (
     <div>
@@ -229,6 +258,72 @@ export default function GardenDetailPage() {
                 </div>
               ))
             )}
+          </div>
+        )}
+
+        {activeTab === "thresholds" && (
+          <div className="space-y-5">
+            <div className="card p-5">
+              <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
+                <div>
+                  <h3 className="font-semibold text-[1rem] text-[#1A2E1F]">Ngưỡng cảnh báo theo khu</h3>
+                  <p className="text-[0.8125rem] text-[#5C7A6A] mt-1">
+                    Thiết lập khoảng giá trị an toàn để cảnh báo được kích hoạt đúng theo từng loại cây.
+                  </p>
+                </div>
+                <button
+                  onClick={() => addToast({ type: "success", message: `Đã lưu ngưỡng cảnh báo cho ${garden.name}` })}
+                  className="btn-primary"
+                >
+                  <Save size={15} />
+                  Lưu cấu hình
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {thresholdRows.map((row) => (
+                  <div key={row.key} className="rounded-[14px] border border-[#E2E8E4] p-4">
+                    <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                      <div>
+                        <p className="text-[0.875rem] font-semibold text-[#1A2E1F]">{row.label}</p>
+                        <p className="text-[0.75rem] text-[#5C7A6A]">Khoảng an toàn hiện tại cho hệ thống cảnh báo</p>
+                      </div>
+                      <span
+                        className="text-[0.75rem] font-semibold px-2.5 py-1 rounded-full"
+                        style={{ color: row.accent, backgroundColor: `${row.accent}18` }}
+                      >
+                        {thresholdForm[row.key].min} - {thresholdForm[row.key].max} {row.unit}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[0.6875rem] uppercase tracking-wide font-semibold text-[#5C7A6A] mb-1.5">
+                          Ngưỡng tối thiểu
+                        </label>
+                        <input
+                          type="number"
+                          className="input-field"
+                          value={thresholdForm[row.key].min}
+                          onChange={(e) => updateThreshold(row.key, "min", e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[0.6875rem] uppercase tracking-wide font-semibold text-[#5C7A6A] mb-1.5">
+                          Ngưỡng tối đa
+                        </label>
+                        <input
+                          type="number"
+                          className="input-field"
+                          value={thresholdForm[row.key].max}
+                          onChange={(e) => updateThreshold(row.key, "max", e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

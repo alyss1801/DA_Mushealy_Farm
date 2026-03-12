@@ -7,7 +7,7 @@ import { useAppStore } from "@/lib/store";
 import {
   LayoutDashboard, Sprout, Cpu, CalendarClock, AlertTriangle,
   BarChart3, BrainCircuit, ClipboardList, Users, Settings2,
-  LogOut, X, Leaf,
+  LogOut, X, Leaf, HardDrive,
 } from "lucide-react";
 import type { UserRole } from "@/types";
 
@@ -27,6 +27,7 @@ const navItems: {
   { label: "Báo cáo",    href: "/reports",   icon: BarChart3,       section: "PHÂN TÍCH", roles: ["ADMIN", "FARMER"] },
   { label: "AI Module",  href: "/ai",        icon: BrainCircuit,    section: "PHÂN TÍCH", roles: ["ADMIN", "FARMER"] },
   { label: "Nhật ký",    href: "/logs",      icon: ClipboardList,   section: "HỆ THỐNG", roles: ["ADMIN"] },
+  { label: "Sao lưu",    href: "/backup",    icon: HardDrive,       section: "HỆ THỐNG", roles: ["ADMIN"] },
   { label: "Tài khoản",  href: "/users",     icon: Users,           section: "HỆ THỐNG", roles: ["ADMIN"] },
   { label: "Hồ sơ",      href: "/profile",   icon: Settings2,       section: "HỆ THỐNG", roles: ["ADMIN", "FARMER"] },
 ];

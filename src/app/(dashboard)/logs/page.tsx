@@ -1,9 +1,11 @@
 "use client";
 
-import { Power, Settings2, AlertTriangle, LogIn, LogOut, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Power, Settings2, AlertTriangle, LogIn, LogOut, Plus, Trash2, Search, Filter } from "lucide-react";
 import { Topbar } from "@/components/layout/Topbar";
 import { systemLogs } from "@/lib/mockData";
-import { timeAgo, formatDateTime } from "@/lib/utils";
+import { EmptyState } from "@/components/shared/index";
+import { cn, timeAgo, formatDateTime } from "@/lib/utils";
 import type { LogActionType } from "@/types";
 
 const actionConfig: Record<LogActionType, { icon: typeof Power; color: string; bg: string; label: string }> = {
@@ -18,16 +20,103 @@ const actionConfig: Record<LogActionType, { icon: typeof Power; color: string; b
 };
 
 export default function LogsPage() {
+  const [search, setSearch] = useState("");
+  const [actionFilter, setActionFilter] = useState<"all" | LogActionType>("all");
+  const [timeFilter, setTimeFilter] = useState<"all" | "today" | "7d" | "30d">("all");
   const sorted = [...systemLogs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const now = Date.now();
+  const filtered = sorted.filter((log) => {
+    const matchesSearch = !search || [log.description, log.userName, log.gardenName ?? ""].join(" ").toLowerCase().includes(search.toLowerCase());
+    const matchesAction = actionFilter === "all" || log.actionType === actionFilter;
+
+    let matchesTime = true;
+    const ageMs = now - new Date(log.timestamp).getTime();
+    if (timeFilter === "today") matchesTime = ageMs <= 24 * 60 * 60 * 1000;
+    if (timeFilter === "7d") matchesTime = ageMs <= 7 * 24 * 60 * 60 * 1000;
+    if (timeFilter === "30d") matchesTime = ageMs <= 30 * 24 * 60 * 60 * 1000;
+
+    return matchesSearch && matchesAction && matchesTime;
+  });
 
   return (
     <div>
-      <Topbar title="Nhật ký hệ thống" subtitle={`${sorted.length} hoạt động được ghi nhận`} />
+      <Topbar title="Nhật ký hệ thống" subtitle={`${filtered.length} / ${sorted.length} hoạt động đang hiển thị`} />
 
       <div className="p-8">
+        <div className="card p-4 mb-5 space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-center">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5C7A6A]" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Tìm theo mô tả, người thao tác hoặc khu vườn"
+                className="input-field pl-10"
+              />
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Filter size={14} className="text-[#5C7A6A]" />
+              {[
+                { id: "all", label: "Tất cả" },
+                { id: "today", label: "Hôm nay" },
+                { id: "7d", label: "7 ngày" },
+                { id: "30d", label: "30 ngày" },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setTimeFilter(item.id as typeof timeFilter)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-[20px] text-[0.8125rem] font-medium border transition-colors",
+                    timeFilter === item.id
+                      ? "bg-[#1B4332] text-white border-[#1B4332]"
+                      : "bg-white text-[#5C7A6A] border-[#E2E8E4] hover:border-[#1B4332] hover:text-[#1B4332]"
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => setActionFilter("all")}
+              className={cn(
+                "px-3 py-1.5 rounded-[20px] text-[0.8125rem] font-medium border transition-colors",
+                actionFilter === "all"
+                  ? "bg-[#1B4332] text-white border-[#1B4332]"
+                  : "bg-white text-[#5C7A6A] border-[#E2E8E4] hover:border-[#1B4332] hover:text-[#1B4332]"
+              )}
+            >
+              Tất cả hành động
+            </button>
+            {(Object.keys(actionConfig) as LogActionType[]).map((type) => (
+              <button
+                key={type}
+                onClick={() => setActionFilter(type)}
+                className={cn(
+                  "px-3 py-1.5 rounded-[20px] text-[0.8125rem] font-medium border transition-colors",
+                  actionFilter === type
+                    ? "bg-[#1B4332] text-white border-[#1B4332]"
+                    : "bg-white text-[#5C7A6A] border-[#E2E8E4] hover:border-[#1B4332] hover:text-[#1B4332]"
+                )}
+              >
+                {actionConfig[type].label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="card overflow-hidden">
-          <div className="divide-y divide-[#E2E8E4]">
-            {sorted.map((log) => {
+          {filtered.length === 0 ? (
+            <EmptyState
+              icon={Search}
+              title="Không có nhật ký phù hợp"
+              description="Thử thay đổi từ khóa tìm kiếm hoặc bộ lọc thời gian/hành động."
+            />
+          ) : (
+            <div className="divide-y divide-[#E2E8E4]">
+              {filtered.map((log) => {
               const config = actionConfig[log.actionType];
               const Icon = config.icon;
               return (
@@ -60,8 +149,9 @@ export default function LogsPage() {
                   </div>
                 </div>
               );
-            })}
-          </div>
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>

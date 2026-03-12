@@ -8,6 +8,9 @@ import type {
   GardenSensorSummary,
   ChartDataPoint,
   AIAnalysis,
+  PlantTypeInfo,
+  ZoneThresholds,
+  BackupRecord,
 } from "@/types";
 
 // ========================
@@ -47,6 +50,54 @@ export const gardens: Garden[] = [
     area: "300m²",
     createdAt: "2025-11-15T08:00:00.000Z",
   },
+];
+
+// ========================
+// PLANT TYPES
+// ========================
+export const plantTypeInfos: PlantTypeInfo[] = [
+  {
+    id: "CAI_XANH",
+    label: "Cải Xanh",
+    emoji: "🥬",
+    description: "Rau cải xanh hữu cơ, ưa mát và ẩm",
+    cycleDays: "45 ngày",
+    optimalTemp: { min: 20, max: 28 },
+    optimalAirHumidity: { min: 65, max: 80 },
+    optimalSoilMoisture: { min: 60, max: 80 },
+    optimalLight: { min: 8, max: 16 },
+  },
+  {
+    id: "CA_CHUA",
+    label: "Cà Chua",
+    emoji: "🍅",
+    description: "Cà chua ghép, cần nhiều ánh sáng và nước",
+    cycleDays: "90–120 ngày",
+    optimalTemp: { min: 22, max: 30 },
+    optimalAirHumidity: { min: 50, max: 70 },
+    optimalSoilMoisture: { min: 50, max: 70 },
+    optimalLight: { min: 14, max: 22 },
+  },
+  {
+    id: "NHA_DAM",
+    label: "Nha Đam",
+    emoji: "🌵",
+    description: "Nha đam xuất khẩu, chịu hạn tốt",
+    cycleDays: "12–18 tháng",
+    optimalTemp: { min: 25, max: 35 },
+    optimalAirHumidity: { min: 40, max: 65 },
+    optimalSoilMoisture: { min: 30, max: 55 },
+    optimalLight: { min: 8, max: 20 },
+  },
+];
+
+// ========================
+// ZONE THRESHOLDS
+// ========================
+export const zoneThresholds: ZoneThresholds[] = [
+  { gardenId: "g1", temperature: { min: 18, max: 30 }, humidityAir: { min: 60, max: 85 }, humiditySoil: { min: 55, max: 85 }, light: { min: 5000, max: 20000 } },
+  { gardenId: "g2", temperature: { min: 20, max: 35 }, humidityAir: { min: 45, max: 75 }, humiditySoil: { min: 40, max: 75 }, light: { min: 10000, max: 30000 } },
+  { gardenId: "g3", temperature: { min: 22, max: 38 }, humidityAir: { min: 35, max: 70 }, humiditySoil: { min: 25, max: 60 }, light: { min: 5000, max: 25000 } },
 ];
 
 // ========================
@@ -364,4 +415,17 @@ export const aiAnalyses: AIAnalysis[] = [
     recommendation: "Phun thuốc trừ sâu sinh học, theo dõi trong 3 ngày tiếp theo",
     timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
   },
+];
+
+// ========================
+// BACKUP RECORDS
+// ========================
+export const backupRecords: BackupRecord[] = [
+  { id: "bk1", type: "auto",   status: "success",     createdAt: "2026-03-08T02:00:00.000Z", fileSize: "14.2 MB", fileName: "backup_20260308_0200.sql.gz", createdBy: "Hệ thống",      note: "Backup tự động hàng ngày" },
+  { id: "bk2", type: "manual", status: "success",     createdAt: "2026-03-07T15:32:11.000Z", fileSize: "13.8 MB", fileName: "backup_20260307_1532.sql.gz", createdBy: "Nguyễn Văn An" },
+  { id: "bk3", type: "auto",   status: "success",     createdAt: "2026-03-07T02:00:00.000Z", fileSize: "13.5 MB", fileName: "backup_20260307_0200.sql.gz", createdBy: "Hệ thống",      note: "Backup tự động hàng ngày" },
+  { id: "bk4", type: "auto",   status: "failed",      createdAt: "2026-03-06T02:00:00.000Z", fileSize: "—",       fileName: "—",                           createdBy: "Hệ thống",      note: "Lỗi kết nối database" },
+  { id: "bk5", type: "manual", status: "success",     createdAt: "2026-03-05T09:15:44.000Z", fileSize: "12.9 MB", fileName: "backup_20260305_0915.sql.gz", createdBy: "Nguyễn Văn An" },
+  { id: "bk6", type: "auto",   status: "success",     createdAt: "2026-03-05T02:00:00.000Z", fileSize: "12.7 MB", fileName: "backup_20260305_0200.sql.gz", createdBy: "Hệ thống" },
+  { id: "bk7", type: "auto",   status: "success",     createdAt: "2026-03-04T02:00:00.000Z", fileSize: "12.4 MB", fileName: "backup_20260304_0200.sql.gz", createdBy: "Hệ thống" },
 ];

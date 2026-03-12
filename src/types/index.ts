@@ -3,6 +3,26 @@
 // ========================
 export type PlantType = "CAI_XANH" | "CA_CHUA" | "NHA_DAM";
 
+export interface PlantTypeInfo {
+  id: PlantType;
+  label: string;
+  emoji: string;
+  description: string;
+  cycleDays: string;
+  optimalTemp: { min: number; max: number };
+  optimalAirHumidity: { min: number; max: number };
+  optimalSoilMoisture: { min: number; max: number };
+  optimalLight: { min: number; max: number }; // klux
+}
+
+export interface ZoneThresholds {
+  gardenId: string;
+  temperature: { min: number; max: number };
+  humidityAir: { min: number; max: number };
+  humiditySoil: { min: number; max: number };
+  light: { min: number; max: number }; // lux
+}
+
 export interface Garden {
   id: string;
   name: string;
@@ -152,6 +172,23 @@ export interface ChartDataPoint {
   garden1?: number;
   garden2?: number;
   garden3?: number;
+}
+
+// ========================
+// Backup
+// ========================
+export type BackupType = "manual" | "auto";
+export type BackupStatus = "success" | "failed" | "in_progress";
+
+export interface BackupRecord {
+  id: string;
+  type: BackupType;
+  status: BackupStatus;
+  createdAt: string;
+  fileSize: string;
+  fileName: string;
+  createdBy: string;
+  note?: string;
 }
 
 // ========================
