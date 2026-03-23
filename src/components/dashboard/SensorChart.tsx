@@ -1,18 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import { cn } from "@/lib/utils";
-import {
-  temperatureChartData,
-  humidityAirChartData,
-  humiditySoilChartData,
-  lightChartData,
-} from "@/lib/mockData";
-import { gardens } from "@/lib/mockData";
+import { useAppStore } from "@/lib/store";
+import type { ChartDataPoint } from "@/types";
 
 type TabKey = "temperature" | "humidity_air" | "humidity_soil" | "light";
 
@@ -28,13 +23,6 @@ const tabConfig: {
   { key: "humidity_soil", label: "Độ ẩm đất", unit: "%", threshold: 50, domain: [0, 100] },
   { key: "light", label: "Ánh sáng", unit: "lux", domain: [0, 25000] },
 ];
-
-const dataMap: Record<TabKey, typeof temperatureChartData> = {
-  temperature: temperatureChartData,
-  humidity_air: humidityAirChartData,
-  humidity_soil: humiditySoilChartData,
-  light: lightChartData,
-};
 
 interface TooltipEntry { dataKey: string; name: string; value: number; color: string; }
 interface CustomTooltipProps { active?: boolean; payload?: TooltipEntry[]; label?: string; unit: string; threshold?: number; }
@@ -68,8 +56,37 @@ function CustomTooltip({ active, payload, label, unit, threshold }: CustomToolti
 
 export function SensorChart() {
   const [activeTab, setActiveTab] = useState<TabKey>("temperature");
+  const [isMounted, setIsMounted] = useState(false);
+  const gardens = useAppStore((state) => state.gardens);
+  const currentFarmId = useAppStore((state) => state.currentFarmId);
+  const temperatureChartData = useAppStore((state) => state.temperatureChartData);
+  const humidityAirChartData = useAppStore((state) => state.humidityAirChartData);
+  const humiditySoilChartData = useAppStore((state) => state.humiditySoilChartData);
+  const lightChartData = useAppStore((state) => state.lightChartData);
+
+  const farmGardens = gardens.filter((garden) => !currentFarmId || garden.farmId === currentFarmId).slice(0, 3);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   const config = tabConfig.find((t) => t.key === activeTab)!;
-  const data = dataMap[activeTab];
+  const data = useMemo(() => {
+    const dataMap: Record<TabKey, ChartDataPoint[]> = {
+      temperature: temperatureChartData,
+      humidity_air: humidityAirChartData,
+      humidity_soil: humiditySoilChartData,
+      light: lightChartData,
+    };
+    const source = dataMap[activeTab];
+    return source.map((point) => {
+      const chartPoint: Record<string, number | string> = { time: point.time };
+      farmGardens.forEach((_, idx) => {
+        chartPoint[`garden${idx + 1}`] = Number(point[`garden${idx + 1}` as keyof ChartDataPoint] ?? 0);
+      });
+      return chartPoint;
+    });
+  }, [activeTab, farmGardens, humidityAirChartData, humiditySoilChartData, lightChartData, temperatureChartData]);
 
   // Show every 2 hours on x-axis
   const tickFormatter = (v: string) => v.endsWith(":00") && parseInt(v.split(":")[0]) % 2 === 0 ? v : "";
@@ -98,7 +115,7 @@ export function SensorChart() {
 
       {/* Garden legend */}
       <div className="flex items-center gap-4 mb-4">
-        {gardens.map((g) => (
+        {farmGardens.map((g) => (
           <div key={g.id} className="flex items-center gap-1.5">
             <span className="w-3 h-0.5 rounded-full inline-block" style={{ backgroundColor: g.color }} />
             <span className="text-[0.75rem] text-[#5C7A6A]">{g.plantLabel}</span>
@@ -107,49 +124,53 @@ export function SensorChart() {
       </div>
 
       <div className="h-[260px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#E2E8E4" vertical={false} />
-            <XAxis
-              dataKey="time"
-              tick={{ fontSize: 11, fill: "#5C7A6A", fontFamily: "'DM Mono', monospace" }}
-              tickFormatter={tickFormatter}
-              axisLine={{ stroke: "#E2E8E4" }}
-              tickLine={false}
-            />
-            <YAxis
-              tick={{ fontSize: 11, fill: "#5C7A6A", fontFamily: "'DM Mono', monospace" }}
-              axisLine={false}
-              tickLine={false}
-              domain={config.domain}
-              tickFormatter={(v) => `${v}`}
-            />
-            <Tooltip
-              content={<CustomTooltip unit={config.unit} threshold={config.threshold} />}
-            />
-            {config.threshold && (
-              <ReferenceLine
-                y={config.threshold}
-                stroke="#E67E22"
-                strokeDasharray="4 4"
-                strokeWidth={1.5}
-                label={{ value: `Ngưỡng ${config.threshold}${config.unit}`, position: "insideTopRight", fontSize: 10, fill: "#E67E22" }}
+        {isMounted ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8E4" vertical={false} />
+              <XAxis
+                dataKey="time"
+                tick={{ fontSize: 11, fill: "#5C7A6A", fontFamily: "'DM Mono', monospace" }}
+                tickFormatter={tickFormatter}
+                axisLine={{ stroke: "#E2E8E4" }}
+                tickLine={false}
               />
-            )}
-            {gardens.map((g) => (
-              <Line
-                key={g.id}
-                type="monotone"
-                dataKey={`garden${g.id.slice(1)}`}
-                stroke={g.color}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4, strokeWidth: 0 }}
-                name={g.plantLabel}
+              <YAxis
+                tick={{ fontSize: 11, fill: "#5C7A6A", fontFamily: "'DM Mono', monospace" }}
+                axisLine={false}
+                tickLine={false}
+                domain={config.domain}
+                tickFormatter={(v) => `${v}`}
               />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
+              <Tooltip
+                content={<CustomTooltip unit={config.unit} threshold={config.threshold} />}
+              />
+              {config.threshold && (
+                <ReferenceLine
+                  y={config.threshold}
+                  stroke="#E67E22"
+                  strokeDasharray="4 4"
+                  strokeWidth={1.5}
+                  label={{ value: `Ngưỡng ${config.threshold}${config.unit}`, position: "insideTopRight", fontSize: 10, fill: "#E67E22" }}
+                />
+              )}
+              {farmGardens.map((g, idx) => (
+                <Line
+                  key={g.id}
+                  type="monotone"
+                  dataKey={`garden${idx + 1}`}
+                  stroke={g.color}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4, strokeWidth: 0 }}
+                  name={g.plantLabel}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-full rounded-[10px] bg-[#F7F8F6] border border-[#E2E8E4]" />
+        )}
       </div>
     </div>
   );

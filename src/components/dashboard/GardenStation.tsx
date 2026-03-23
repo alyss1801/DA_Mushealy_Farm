@@ -27,11 +27,20 @@ const statusLabel = {
 
 export function GardenStation({ garden, sensors }: GardenStationProps) {
   const devices = useAppStore((s) => s.devices);
+  const cropTypes = useAppStore((s) => s.cropTypes);
   const toggleDevice = useAppStore((s) => s.toggleDevice);
   const addToast = useAppStore((s) => s.addToast);
 
   const pump = devices.find((d) => d.gardenId === garden.id && d.type === "pump");
   const soilPct = Math.min(Math.max(sensors.humiditySoil, 0), 100);
+  const crop = cropTypes.find((item) => item.id === garden.cropTypeId);
+
+  const getSensorState = (value: number, min?: number, max?: number) => {
+    if (min === undefined || max === undefined) return "normal" as const;
+    if (value < min || value > max) return "bad" as const;
+    if (value <= min + (max - min) * 0.1 || value >= max - (max - min) * 0.1) return "warn" as const;
+    return "normal" as const;
+  };
 
   const handleTogglePump = () => {
     if (!pump) return;
@@ -43,11 +52,37 @@ export function GardenStation({ garden, sensors }: GardenStationProps) {
   };
 
   const metrics = [
-    { icon: Thermometer, label: "Nhiệt độ", value: `${sensors.temperature}°C`, unit: "°C" },
-    { icon: Droplets, label: "Độ ẩm KK", value: `${sensors.humidityAir}%`, unit: "%" },
-    { icon: Droplet, label: "Độ ẩm đất", value: `${sensors.humiditySoil}%`, unit: "%" },
-    { icon: Sun, label: "Ánh sáng", value: `${(sensors.light / 1000).toFixed(1)}k`, unit: "lux" },
+    {
+      icon: Thermometer,
+      label: "Nhiệt độ",
+      value: `${sensors.temperature}°C`,
+      unit: "°C",
+      state: getSensorState(sensors.temperature, crop?.thresholdsJson.temperature.min, crop?.thresholdsJson.temperature.max),
+    },
+    {
+      icon: Droplets,
+      label: "Độ ẩm KK",
+      value: `${sensors.humidityAir}%`,
+      unit: "%",
+      state: getSensorState(sensors.humidityAir, crop?.thresholdsJson.humidityAir.min, crop?.thresholdsJson.humidityAir.max),
+    },
+    {
+      icon: Droplet,
+      label: "Độ ẩm đất",
+      value: `${sensors.humiditySoil}%`,
+      unit: "%",
+      state: getSensorState(sensors.humiditySoil, crop?.thresholdsJson.humiditySoil.min, crop?.thresholdsJson.humiditySoil.max),
+    },
+    {
+      icon: Sun,
+      label: "Ánh sáng",
+      value: `${(sensors.light / 1000).toFixed(1)}k`,
+      unit: "lux",
+      state: getSensorState(sensors.light, crop?.thresholdsJson.light.min, crop?.thresholdsJson.light.max),
+    },
   ];
+
+  const anomalyCount = metrics.filter((item) => item.state !== "normal").length;
 
   return (
     <div className="bg-white border border-[#E2E8E4] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden">
@@ -80,12 +115,27 @@ export function GardenStation({ garden, sensors }: GardenStationProps) {
           </span>
         </div>
 
+        {anomalyCount > 0 && (
+          <div className="mb-3 text-[0.6875rem] rounded-[8px] border border-[#F4CACA] bg-[#FFF5F5] text-[#C0392B] px-2.5 py-1.5">
+            Phát hiện {anomalyCount} chỉ số lệch ngưỡng cây trồng.
+          </div>
+        )}
+
         {/* Sensor grid */}
         <div className="grid grid-cols-2 gap-2 mb-4">
           {metrics.map((m) => {
             const Icon = m.icon;
             return (
-              <div key={m.label} className="bg-[#F7F8F6] rounded-[8px] p-3">
+              <div
+                key={m.label}
+                className="bg-[#F7F8F6] rounded-[8px] p-3 border"
+                style={{
+                  borderColor:
+                    m.state === "bad" ? "#F4CACA" : m.state === "warn" ? "#F6DEC1" : "#E2E8E4",
+                  backgroundColor:
+                    m.state === "bad" ? "#FFF5F5" : m.state === "warn" ? "#FFF9F2" : "#F7F8F6",
+                }}
+              >
                 <Icon size={13} strokeWidth={1.5} className="text-[#5C7A6A] mb-1.5" />
                 <p
                   className="leading-none mb-0.5 font-bold text-[#1A2E1F]"
@@ -112,7 +162,7 @@ export function GardenStation({ garden, sensors }: GardenStationProps) {
               className="h-full rounded-full transition-all duration-500"
               style={{
                 width: `${soilPct}%`,
-                backgroundColor: soilPct < 50 ? "#E67E22" : soilPct < 30 ? "#C0392B" : "#27AE60",
+                backgroundColor: soilPct < 30 ? "#C0392B" : soilPct < 50 ? "#E67E22" : "#27AE60",
               }}
             />
             {/* Threshold marker at 50% */}
@@ -135,7 +185,7 @@ export function GardenStation({ garden, sensors }: GardenStationProps) {
               size="sm"
             />
             <Link
-              href={`/gardens/${garden.id}`}
+              href={garden.farmId ? `/farms/${garden.farmId}/gardens/${garden.id}` : `/gardens/${garden.id}`}
               className="text-[#1B4332] hover:text-[#40916C] transition-colors"
             >
               <ArrowRight size={14} />

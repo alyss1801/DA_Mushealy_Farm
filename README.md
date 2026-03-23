@@ -13,8 +13,18 @@ Hệ thống quản lý nông trại thông minh, xây dựng bằng **Next.js 1
 ### Demo credentials
 | Email | Mật khẩu | Vai trò |
 |---|---|---|
-| admin@mushealy.vn | 123456 | Admin |
-| farmer@mushealy.vn | 123456 | Nông dân |
+| an.nguyen@nongtech.vn | 123456 | Admin |
+| bich.tran@nongtech.vn | 123456 | Nông dân |
+| cuong.le@nongtech.vn | 123456 | Nông dân |
+
+Ghi chú:
+- Tài khoản `dung.pham@nongtech.vn` đang ở trạng thái `inactive` nên sẽ bị chuyển qua trang chờ kích hoạt.
+- Nếu bạn đã đổi mật khẩu trong màn Users, mật khẩu local sẽ ưu tiên theo dữ liệu đã lưu trong trình duyệt.
+
+### Auth provider mode
+- Mặc định app chạy auth local mock (không cần backend): `NEXT_PUBLIC_AUTH_PROVIDER=local`
+- Kiến trúc đã có adapter để chuyển sang backend auth: `NEXT_PUBLIC_AUTH_PROVIDER=supabase`
+- Nếu đặt `supabase` nhưng chưa tích hợp backend, login sẽ báo rõ trạng thái provider chưa cấu hình.
 
 ---
 

@@ -1,13 +1,25 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ToastContainer } from "@/components/shared/ToastContainer";
 import { FloatingChat } from "@/components/shared/FloatingChat";
-import { useAppStore } from "@/lib/store";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const loggedInUser = useAppStore((s) => s.loggedInUser);
-  const isFarmer = loggedInUser?.role === "FARMER";
+  const router = useRouter();
+  const { user: loggedInUser } = useAuth();
+
+  useEffect(() => {
+    if (!loggedInUser) {
+      router.replace("/login");
+    }
+  }, [loggedInUser, router]);
+
+  if (!loggedInUser) {
+    return null;
+  }
 
   return (
     <div className="flex h-screen bg-[#F7F8F6] overflow-hidden">
@@ -18,7 +30,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </main>
       <ToastContainer />
-      {isFarmer && <FloatingChat />}
+      {loggedInUser && <FloatingChat />}
     </div>
   );
 }

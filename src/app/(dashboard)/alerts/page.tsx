@@ -1,14 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle, Clock, ChevronRight, User } from "lucide-react";
 import { Topbar } from "@/components/layout/Topbar";
 import { useAppStore } from "@/lib/store";
 import { Badge, EmptyState } from "@/components/shared/index";
+import { ErrorState } from "@/components/shared/ErrorStates";
+import { getVisibleFarmsForViewer } from "@/lib/dataScope";
 import { cn, formatDateTime, timeAgo } from "@/lib/utils";
 import type { AlertStatus } from "@/types";
 
 type TabType = "all" | "unhandled" | "resolved";
+type DateRangeType = "all" | "24h" | "7d";
 
 const severityConfig = {
   high: { color: "#C0392B", bg: "#FEE2E2", label: "Cao" },
@@ -24,24 +28,98 @@ const statusConfig = {
 
 export default function AlertsPage() {
   const alerts = useAppStore((s) => s.alerts);
+  const farms = useAppStore((s) => s.farms);
+  const users = useAppStore((s) => s.users);
+  const selectedFarmerId = useAppStore((s) => s.selectedFarmerId);
+  const loggedInUser = useAppStore((s) => s.loggedInUser);
+  const gardens = useAppStore((s) => s.gardens);
+  const currentFarmId = useAppStore((s) => s.currentFarmId);
   const processAlert = useAppStore((s) => s.processAlert);
   const resolveAlert = useAppStore((s) => s.resolveAlert);
   const addToast = useAppStore((s) => s.addToast);
 
   const [activeTab, setActiveTab] = useState<TabType>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [farmFilter, setFarmFilter] = useState<string>(currentFarmId ?? "all");
+  const [gardenFilter, setGardenFilter] = useState<string>("all");
+  const [severityFilter, setSeverityFilter] = useState<"all" | "high" | "medium" | "low">("all");
+  const [dateRange, setDateRange] = useState<DateRangeType>("all");
+
+  const visibleFarms = useMemo(
+    () => getVisibleFarmsForViewer({ farms, users, loggedInUser, selectedFarmerId }),
+    [farms, users, loggedInUser, selectedFarmerId]
+  );
+  const visibleFarmIds = useMemo(() => new Set(visibleFarms.map((farm) => farm.id)), [visibleFarms]);
+  const scopedGardens = useMemo(
+    () => gardens.filter((garden) => garden.farmId && visibleFarmIds.has(garden.farmId)),
+    [gardens, visibleFarmIds]
+  );
+
+  const now = Date.now();
+  const farmByGardenId = useMemo(
+    () => new Map(scopedGardens.map((garden) => [garden.id, garden.farmId ?? null])),
+    [scopedGardens]
+  );
+
+  const scopedAlerts = useMemo(
+    () => alerts.filter((alert) => {
+      const resolvedFarmId = alert.farmId ?? farmByGardenId.get(alert.gardenId) ?? null;
+      return Boolean(resolvedFarmId && visibleFarmIds.has(resolvedFarmId));
+    }),
+    [alerts, farmByGardenId, visibleFarmIds]
+  );
 
   const tabCounts = {
-    all: alerts.length,
-    unhandled: alerts.filter((a) => a.status !== "RESOLVED").length,
-    resolved: alerts.filter((a) => a.status === "RESOLVED").length,
+    all: scopedAlerts.length,
+    unhandled: scopedAlerts.filter((a) => a.status !== "RESOLVED").length,
+    resolved: scopedAlerts.filter((a) => a.status === "RESOLVED").length,
   };
 
-  const filtered = alerts.filter((a) => {
-    if (activeTab === "unhandled") return a.status !== "RESOLVED";
-    if (activeTab === "resolved") return a.status === "RESOLVED";
-    return true;
-  }).sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime());
+  const farmScopedGardens = scopedGardens.filter((garden) => {
+    if (farmFilter === "all") return true;
+    return garden.farmId === farmFilter;
+  });
+
+  useEffect(() => {
+    if (currentFarmId && visibleFarmIds.has(currentFarmId)) {
+      setFarmFilter(currentFarmId);
+      setGardenFilter("all");
+      return;
+    }
+    setFarmFilter("all");
+  }, [currentFarmId, visibleFarmIds]);
+
+  const filtered = scopedAlerts
+    .filter((alert) => {
+      if (activeTab === "unhandled" && alert.status === "RESOLVED") return false;
+      if (activeTab === "resolved" && alert.status !== "RESOLVED") return false;
+
+      const resolvedFarmId = alert.farmId ?? farmByGardenId.get(alert.gardenId) ?? null;
+      if (farmFilter !== "all" && resolvedFarmId !== farmFilter) return false;
+      if (gardenFilter !== "all" && alert.gardenId !== gardenFilter) return false;
+      if (severityFilter !== "all" && alert.severity !== severityFilter) return false;
+
+      const ageMs = now - new Date(alert.detectedAt).getTime();
+      if (dateRange === "24h" && ageMs > 24 * 60 * 60 * 1000) return false;
+      if (dateRange === "7d" && ageMs > 7 * 24 * 60 * 60 * 1000) return false;
+
+      return true;
+    })
+    .sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime());
+
+  if (visibleFarms.length === 0) {
+    return (
+      <div>
+        <Topbar title="Cảnh báo" subtitle="Chưa có nông dân hoặc nông trại trong phạm vi quản lý" />
+        <div className="p-8 max-w-3xl">
+          <ErrorState
+            title="Không có dữ liệu cảnh báo trong ngữ cảnh hiện tại"
+            description="Hãy chọn nông dân ở sidebar hoặc tạo nông trại để bắt đầu theo dõi cảnh báo."
+          />
+        </div>
+      </div>
+    );
+  }
 
   const handleProcess = (alertId: string) => {
     processAlert(alertId, "Nguyễn Văn An");
@@ -84,6 +162,59 @@ export default function AlertsPage() {
             );
           })}
         </div>
+
+        <div className="card p-4 mb-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div>
+            <label className="block text-[0.6875rem] font-semibold uppercase tracking-wide text-[#5C7A6A] mb-1.5">Nông trại</label>
+            <select
+              className="input-field"
+              value={farmFilter}
+              onChange={(event) => {
+                setFarmFilter(event.target.value);
+                setGardenFilter("all");
+              }}
+            >
+              <option value="all">Tất cả nông trại</option>
+              {visibleFarms.map((farm) => (
+                <option key={farm.id} value={farm.id}>{farm.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[0.6875rem] font-semibold uppercase tracking-wide text-[#5C7A6A] mb-1.5">Khu vườn</label>
+            <select className="input-field" value={gardenFilter} onChange={(event) => setGardenFilter(event.target.value)}>
+              <option value="all">Tất cả khu vườn</option>
+              {farmScopedGardens.map((garden) => (
+                <option key={garden.id} value={garden.id}>{garden.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[0.6875rem] font-semibold uppercase tracking-wide text-[#5C7A6A] mb-1.5">Mức độ</label>
+            <select className="input-field" value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value as typeof severityFilter)}>
+              <option value="all">Tất cả mức</option>
+              <option value="high">Cao</option>
+              <option value="medium">Trung bình</option>
+              <option value="low">Thấp</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[0.6875rem] font-semibold uppercase tracking-wide text-[#5C7A6A] mb-1.5">Thời gian</label>
+            <select className="input-field" value={dateRange} onChange={(event) => setDateRange(event.target.value as DateRangeType)}>
+              <option value="all">Toàn bộ</option>
+              <option value="24h">24 giờ qua</option>
+              <option value="7d">7 ngày qua</option>
+            </select>
+          </div>
+        </div>
+
+        {farmFilter !== "all" && (
+          <div className="mb-5 flex justify-end">
+            <Link href={`/farms/${farmFilter}/alert-rules`} className="btn-secondary">
+              Mở Alert Rules của farm này
+            </Link>
+          </div>
+        )}
 
         {/* Alert list */}
         {filtered.length === 0 ? (
@@ -143,6 +274,9 @@ export default function AlertsPage() {
                         <span className="text-[0.6875rem] text-[#5C7A6A] flex items-center gap-1">
                           <Clock size={10} /> {timeAgo(alert.detectedAt)}
                         </span>
+                        {alert.farmName && (
+                          <span className="text-[0.6875rem] text-[#5C7A6A]">{alert.farmName}</span>
+                        )}
                         <Badge variant={alert.severity === "high" ? "danger" : alert.severity === "medium" ? "warn" : "ok"}>
                           Mức {sev.label}
                         </Badge>
@@ -195,6 +329,24 @@ export default function AlertsPage() {
                           );
                         })}
                       </div>
+
+                      {(alert.snapshot || alert.autoActionMessage) && (
+                        <div className="mb-4 rounded-[10px] border border-[#E2E8E4] bg-white p-3">
+                          <p className="text-[0.6875rem] uppercase tracking-wide text-[#5C7A6A] font-semibold mb-2">Ngữ cảnh cảnh báo</p>
+                          {alert.snapshot && (
+                            <div className="flex gap-2 flex-wrap">
+                              {Object.entries(alert.snapshot).map(([key, value]) => (
+                                <span key={key} className="text-[0.6875rem] px-2 py-1 rounded-[20px] bg-[#F7F8F6] border border-[#E2E8E4] text-[#1A2E1F]">
+                                  {key}: {value}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {alert.autoActionMessage && (
+                            <p className="text-[0.75rem] text-[#1A2E1F] mt-2">{alert.autoActionMessage}</p>
+                          )}
+                        </div>
+                      )}
 
                       {/* Action buttons */}
                       {alert.status !== "RESOLVED" && (

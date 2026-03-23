@@ -2,26 +2,34 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, AlertCircle, X, ChevronRight } from "lucide-react";
+import { Eye, EyeOff, X, ChevronRight } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
-import { users } from "@/lib/mockData";
+import { FormErrorBanner, InlineFieldError } from "@/components/shared";
+import { ValidationFeedback } from "@/components/shared/ValidationFeedback";
+import { isValidEmail } from "@/lib/validation";
+import { getDashboardLandingPath } from "@/lib/localSettings";
+import { authenticateUser } from "@/lib/authProvider";
 
 const DEMO_CREDENTIALS: Record<string, { password: string; userId: string; label: string; role: string }> = {
-  "admin@mushealy.vn":  { password: "123456", userId: "u1", label: "Admin",     role: "ADMIN"  },
-  "farmer@mushealy.vn": { password: "123456", userId: "u2", label: "Nông dân",  role: "FARMER" },
+  "an.nguyen@nongtech.vn":  { password: "123456", userId: "u1", label: "Admin",     role: "ADMIN"  },
+  "bich.tran@nongtech.vn": { password: "123456", userId: "u2", label: "Nông dân",  role: "FARMER" },
 };
 
 // ── Login Modal ──────────────────────────────────────────────────────────────
 function LoginModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const login  = useAppStore((s) => s.login);
+  const users  = useAppStore((s) => s.users);
+  const userPasswords = useAppStore((s) => s.userPasswords);
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState("");
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const fillDemo = (em: string) => {
@@ -33,14 +41,62 @@ function LoginModal({ onClose }: { onClose: () => void }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!email || !password) { setError("Vui lòng nhập đầy đủ thông tin."); return; }
+    const normalizedEmail = email.toLowerCase().trim();
+    let hasError = false;
+
+    if (!normalizedEmail) {
+      setEmailError("Email là bắt buộc.");
+      hasError = true;
+    } else if (!isValidEmail(normalizedEmail)) {
+      setEmailError("Email không đúng định dạng.");
+      hasError = true;
+    } else {
+      setEmailError(null);
+    }
+
+    if (!password) {
+      setPasswordError("Mật khẩu là bắt buộc.");
+      hasError = true;
+    } else {
+      setPasswordError(null);
+    }
+
+    if (hasError) {
+      setError("Vui lòng kiểm tra lại các trường bắt buộc trước khi đăng nhập.");
+      return;
+    }
+
     setLoading(true);
     await new Promise((r) => setTimeout(r, 700));
-    const cred = DEMO_CREDENTIALS[email.toLowerCase().trim()];
-    if (cred && cred.password === password) {
-      const user = users.find((u) => u.id === cred.userId);
-      if (user) { login(user); router.push("/dashboard"); return; }
+    const authResult = await authenticateUser(
+      {
+        email: normalizedEmail,
+        password,
+      },
+      {
+        users,
+        userPasswords,
+        demoCredentials: DEMO_CREDENTIALS,
+      }
+    );
+
+    if (authResult.ok && authResult.user) {
+      login(authResult.user);
+      router.push(getDashboardLandingPath());
+      return;
     }
+
+    if (authResult.reason === "inactive") {
+      router.push(`/pending?email=${encodeURIComponent(normalizedEmail)}`);
+      return;
+    }
+
+    if (authResult.reason === "provider_not_configured") {
+      setError("Auth provider backend chưa được cấu hình. Hãy đặt NEXT_PUBLIC_AUTH_PROVIDER=local hoặc hoàn tất tích hợp backend.");
+      setLoading(false);
+      return;
+    }
+
     setError("Email hoặc mật khẩu không đúng.");
     setLoading(false);
   };
@@ -91,25 +147,26 @@ function LoginModal({ onClose }: { onClose: () => void }) {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-[0.6875rem] font-semibold uppercase tracking-wide text-[#5C7A6A] mb-1.5">Email</label>
-              <input type="email" autoComplete="email" placeholder="admin@mushealy.vn"
-                value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }}
+              <input type="email" autoComplete="email" placeholder="an.nguyen@nongtech.vn"
+                value={email} onChange={(e) => { setEmail(e.target.value); setError(""); setEmailError(null); }}
                 className={cn(
                   "w-full px-3.5 py-2.5 rounded-[10px] border text-[0.875rem] outline-none transition-all",
                   "bg-[#F7F9F7] border-[#D1E8DC] focus:border-[#1B4332] focus:bg-white focus:shadow-[0_0_0_3px_rgba(27,67,50,0.1)]",
-                  error && "border-[#C0392B]"
+                  (emailError || error) && "border-[#C0392B]"
                 )}
               />
+              <InlineFieldError message={emailError} />
             </div>
             <div>
               <label className="block text-[0.6875rem] font-semibold uppercase tracking-wide text-[#5C7A6A] mb-1.5">Mật khẩu</label>
               <div className="relative">
                 <input type={showPass ? "text" : "password"} autoComplete="current-password"
                   placeholder="••••••" value={password}
-                  onChange={(e) => { setPassword(e.target.value); setError(""); }}
+                  onChange={(e) => { setPassword(e.target.value); setError(""); setPasswordError(null); }}
                   className={cn(
                     "w-full px-3.5 py-2.5 pr-10 rounded-[10px] border text-[0.875rem] outline-none transition-all",
                     "bg-[#F7F9F7] border-[#D1E8DC] focus:border-[#1B4332] focus:bg-white focus:shadow-[0_0_0_3px_rgba(27,67,50,0.1)]",
-                    error && "border-[#C0392B]"
+                    (passwordError || error) && "border-[#C0392B]"
                   )}
                 />
                 <button type="button" onClick={() => setShowPass(!showPass)}
@@ -117,13 +174,10 @@ function LoginModal({ onClose }: { onClose: () => void }) {
                   {showPass ? <EyeOff size={16}/> : <Eye size={16}/>}
                 </button>
               </div>
+              <InlineFieldError message={passwordError} />
             </div>
-            {error && (
-              <div className="flex items-center gap-2 p-3 rounded-[8px] bg-[#FEE2E2] text-[#C0392B]">
-                <AlertCircle size={14}/>
-                <p className="text-[0.75rem] font-medium">{error}</p>
-              </div>
-            )}
+            <FormErrorBanner message={error} />
+            <ValidationFeedback errors={[emailError ?? "", passwordError ?? ""].filter(Boolean)} />
             <button type="submit" disabled={loading}
               className={cn(
                 "w-full py-3 rounded-[12px] font-bold text-[0.9375rem] transition-all flex items-center justify-center gap-2",
@@ -149,33 +203,67 @@ function LoginModal({ onClose }: { onClose: () => void }) {
 // ── Register Modal ───────────────────────────────────────────────────────────
 function RegisterModal({ onClose }: { onClose: () => void }) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const addToast = useAppStore((state) => state.addToast);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"FARMER" | "ADMIN">("FARMER");
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!fullName.trim()) {
+      setError("Vui lòng nhập họ và tên.");
+      return;
+    }
+    if (!isValidEmail(normalizedEmail)) {
+      setError("Email không đúng định dạng.");
+      return;
+    }
+
+    addToast({
+      type: "success",
+      message: `Đã ghi nhận yêu cầu đăng ký cho ${fullName.trim()} (${role}). Quản trị viên sẽ liên hệ qua ${normalizedEmail}.`,
+    });
+    onClose();
+  };
+
   return (
     <div ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(10,20,14,0.55)", backdropFilter: "blur(6px)" }}
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}>
-      <div className="bg-white rounded-[20px] shadow-[0_24px_80px_rgba(0,0,0,0.22)] w-full max-w-[400px] overflow-hidden">
+      <div className="bg-white rounded-[20px] shadow-[0_24px_80px_rgba(0,0,0,0.22)] w-full max-w-[430px] overflow-hidden">
         <div className="flex items-center justify-between px-6 pt-6 pb-4">
           <div className="flex items-center gap-2.5">
             <Image src="/logo.png" alt="Mushealy" width={36} height={36} className="rounded-[8px] object-contain"/>
-            <p className="text-[0.8125rem] font-bold text-[#1A2E1F]">Đăng ký tài khoản</p>
+            <p className="text-[0.8125rem] font-bold text-[#1A2E1F]">Yêu cầu mở tài khoản</p>
           </div>
           <button onClick={onClose}
             className="w-8 h-8 rounded-full flex items-center justify-center text-[#5C7A6A] hover:bg-[#F0F4F0] transition-colors">
             <X size={16}/>
           </button>
         </div>
-        <div className="px-6 pb-8 text-center">
-          <div className="w-16 h-16 rounded-full bg-[#F0F8F4] flex items-center justify-center mx-auto mb-4">
-            <span className="text-3xl">🌱</span>
+        <div className="px-6 pb-6 space-y-3">
+          <p className="text-[0.8125rem] text-[#5C7A6A]">Điền thông tin để gửi yêu cầu tạo tài khoản cho quản trị viên.</p>
+          <div>
+            <label className="block text-[0.6875rem] font-semibold uppercase tracking-wide text-[#5C7A6A] mb-1.5">Họ và tên</label>
+            <input className="input-field" value={fullName} onChange={(e) => { setFullName(e.target.value); setError(null); }} />
           </div>
-          <h3 className="text-[1.125rem] font-bold text-[#1A2E1F] mb-2">Tính năng sắp ra mắt</h3>
-          <p className="text-[0.8125rem] text-[#5C7A6A] leading-relaxed mb-6">
-            Đăng ký trực tuyến đang được phát triển.<br/>
-            Hiện tại vui lòng liên hệ quản trị viên để được cấp tài khoản.
-          </p>
-          <div className="flex gap-2 text-[0.75rem] text-[#5C7A6A] bg-[#F4F8F5] rounded-[10px] px-4 py-3 justify-center">
-            📧 <span className="font-medium">admin@mushealy.vn</span>
+          <div>
+            <label className="block text-[0.6875rem] font-semibold uppercase tracking-wide text-[#5C7A6A] mb-1.5">Email liên hệ</label>
+            <input className="input-field" value={email} onChange={(e) => { setEmail(e.target.value); setError(null); }} />
+          </div>
+          <div>
+            <label className="block text-[0.6875rem] font-semibold uppercase tracking-wide text-[#5C7A6A] mb-1.5">Vai trò mong muốn</label>
+            <select className="input-field" value={role} onChange={(e) => setRole(e.target.value as "FARMER" | "ADMIN") }>
+              <option value="FARMER">Farmer — Nông dân</option>
+              <option value="ADMIN">Admin — Kỹ sư</option>
+            </select>
+          </div>
+          <FormErrorBanner message={error} />
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button onClick={onClose} className="btn-secondary">Hủy</button>
+            <button onClick={handleSubmit} className="btn-primary" disabled={!fullName.trim() || !email.trim()}>Gửi yêu cầu</button>
           </div>
         </div>
       </div>
@@ -195,8 +283,16 @@ const FEATURES = [
 ];
 
 export default function LoginPage() {
+  const router = useRouter();
+  const loggedInUser = useAppStore((state) => state.loggedInUser);
   const [activeSlide, setActiveSlide] = useState(0);
   const [modal, setModal]             = useState<"login" | "register" | null>(null);
+
+  useEffect(() => {
+    if (loggedInUser) {
+      router.replace(getDashboardLandingPath());
+    }
+  }, [loggedInUser, router]);
 
   useEffect(() => {
     const id = setInterval(() => setActiveSlide((p) => (p + 1) % SLIDES.length), 4500);

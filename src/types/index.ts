@@ -3,6 +3,31 @@
 // ========================
 export type PlantType = "CAI_XANH" | "CA_CHUA" | "NHA_DAM";
 
+export interface CropType {
+  id: string;
+  name: string;
+  thresholdsJson: {
+    temperature: { min: number; max: number };
+    humidityAir: { min: number; max: number };
+    humiditySoil: { min: number; max: number };
+    light: { min: number; max: number };
+  };
+  wateringScheduleJson: {
+    morning: string;
+    afternoon: string;
+  };
+}
+
+export interface Farm {
+  id: string;
+  name: string;
+  location: string;
+  ownerId: string;
+  createdAt: string;
+  status: "active" | "paused" | "warning";
+  description?: string;
+}
+
 export interface PlantTypeInfo {
   id: PlantType;
   label: string;
@@ -25,6 +50,8 @@ export interface ZoneThresholds {
 
 export interface Garden {
   id: string;
+  farmId?: string;
+  cropTypeId?: string;
   name: string;
   plantType: PlantType;
   plantLabel: string;
@@ -32,6 +59,7 @@ export interface Garden {
   status: "OK" | "WARN" | "ALERT";
   description?: string;
   area?: string;
+  areaM2?: number;
   createdAt: string;
 }
 
@@ -78,9 +106,12 @@ export interface Device {
   type: DeviceType;
   gardenId: string;
   gardenName: string;
+  hardwareId?: string;
   status: "online" | "offline" | "error";
   isOn: boolean;
   lastUpdated: string;
+  lastSeenAt?: string;
+  locationNote?: string;
   description?: string;
 }
 
@@ -89,6 +120,29 @@ export interface Device {
 // ========================
 export type RepeatType = "once" | "daily" | "weekly";
 export type ScheduleAction = "ON" | "OFF";
+export type ScheduleType = "MANUAL" | "TIME_BASED" | "THRESHOLD_BASED";
+
+export interface ThresholdCondition {
+  sensorType: SensorType;
+  operator: "<" | ">" | "<=" | ">=" | "==";
+  value: number;
+  unit: string;
+}
+
+export interface ThresholdConfig {
+  logic: "AND" | "OR";
+  conditions: ThresholdCondition[];
+  action: ScheduleAction;
+  durationMin: number;
+  cooldownMin: number;
+}
+
+export interface TimeConfig {
+  days: number[];
+  startTime: string;
+  durationMin: number;
+  action: ScheduleAction;
+}
 
 export interface Schedule {
   id: string;
@@ -96,12 +150,16 @@ export interface Schedule {
   deviceName: string;
   gardenId: string;
   gardenName: string;
+  scheduleType?: ScheduleType;
+  name?: string;
   action: ScheduleAction;
   startTime: string; // HH:MM
   endTime?: string;
   date: string; // YYYY-MM-DD
   repeat: RepeatType;
   isActive: boolean;
+  timeConfig?: TimeConfig;
+  thresholdConfig?: ThresholdConfig;
 }
 
 // ========================
@@ -112,6 +170,8 @@ export type AlertStatus = "DETECTED" | "PROCESSING" | "RESOLVED";
 
 export interface Alert {
   id: string;
+  farmId?: string;
+  farmName?: string;
   gardenId: string;
   gardenName: string;
   deviceId?: string;
@@ -126,6 +186,27 @@ export interface Alert {
   processingAt?: string;
   resolvedAt?: string;
   processedBy?: string;
+  snapshot?: Partial<Record<SensorType, number>>;
+  autoActionMessage?: string;
+}
+
+export interface AlertRule {
+  id: string;
+  farmId: string;
+  gardenId?: string;
+  cropTypeId: string;
+  name: string;
+  severity: "CRITICAL" | "WARNING" | "INFO";
+  logic: "AND" | "OR";
+  conditions: ThresholdCondition[];
+  autoAction?: {
+    deviceId: string;
+    action: ScheduleAction;
+    durationMin: number;
+  };
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
 }
 
 // ========================
@@ -140,6 +221,8 @@ export interface User {
   role: UserRole;
   phone?: string;
   assignedGardens: string[];
+  assignedFarmIds?: string[];
+  managedFarmerIds?: string[];
   status: "active" | "inactive";
   avatar?: string;
   createdAt: string;

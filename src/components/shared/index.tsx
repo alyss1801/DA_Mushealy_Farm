@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 
 // ========================
 // Status Dot
@@ -112,6 +113,35 @@ export function ConfirmDialog({ isOpen, title, description, confirmLabel = "Xác
           <button onClick={onConfirm} className="btn-danger">{confirmLabel}</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+interface InlineFieldErrorProps {
+  message?: string | null;
+  className?: string;
+}
+
+export function InlineFieldError({ message, className }: InlineFieldErrorProps) {
+  if (!message) return null;
+  return (
+    <p className={cn("text-[0.75rem] text-[#C0392B] mt-1", className)}>
+      {message}
+    </p>
+  );
+}
+
+interface FormErrorBannerProps {
+  message?: string | null;
+  className?: string;
+}
+
+export function FormErrorBanner({ message, className }: FormErrorBannerProps) {
+  if (!message) return null;
+  return (
+    <div className={cn("flex items-start gap-2 p-3 rounded-[8px] bg-[#FEE2E2] text-[#C0392B]", className)}>
+      <AlertCircle size={14} className="mt-0.5" />
+      <p className="text-[0.75rem] font-medium leading-relaxed">{message}</p>
     </div>
   );
 }

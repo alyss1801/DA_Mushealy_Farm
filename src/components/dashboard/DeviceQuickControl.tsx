@@ -4,7 +4,6 @@ import { Cpu, Droplets, Lightbulb } from "lucide-react";
 import { ToggleSwitch } from "@/components/shared/ToggleSwitch";
 import { StatusDot } from "@/components/shared/index";
 import { useAppStore } from "@/lib/store";
-import { gardens } from "@/lib/mockData";
 
 const deviceTypeConfig: Record<string, { icon: typeof Cpu; color: string }> = {
   pump: { icon: Droplets, color: "#2980B9" },
@@ -17,10 +16,20 @@ const deviceTypeConfig: Record<string, { icon: typeof Cpu; color: string }> = {
 
 export function DeviceQuickControl() {
   const devices = useAppStore((s) => s.devices);
+  const gardens = useAppStore((s) => s.gardens);
+  const currentFarmId = useAppStore((s) => s.currentFarmId);
   const toggleDevice = useAppStore((s) => s.toggleDevice);
   const addToast = useAppStore((s) => s.addToast);
 
-  const controllable = devices.filter((d) => d.type === "pump" || d.type === "led_rgb");
+  const farmGardenIds = new Set(
+    gardens
+      .filter((garden) => !currentFarmId || garden.farmId === currentFarmId)
+      .map((garden) => garden.id)
+  );
+
+  const controllable = devices.filter(
+    (d) => (d.type === "pump" || d.type === "led_rgb") && farmGardenIds.has(d.gardenId)
+  );
 
   const getGardenColor = (gardenId: string) =>
     gardens.find((g) => g.id === gardenId)?.color ?? "#5C7A6A";

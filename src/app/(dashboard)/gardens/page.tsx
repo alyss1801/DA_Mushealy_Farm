@@ -3,11 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
-import { gardens, plantTypeInfos, sensorSummaries } from "@/lib/mockData";
+import { useAppStore } from "@/lib/store";
 import { GardenStation } from "@/components/dashboard/GardenStation";
 import { Badge } from "@/components/shared/index";
+import { ErrorState } from "@/components/shared/ErrorStates";
 import { ArrowRight, Droplet, Leaf, MapPin, Sun, Thermometer } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { buildFallbackSensorSummary } from "@/lib/gardenFallback";
 
 const plantMetrics = [
   { key: "optimalTemp", label: "Nhiệt độ", unit: "°C", icon: Thermometer, max: 40 },
@@ -18,41 +20,53 @@ const plantMetrics = [
 
 export default function GardensPage() {
   const [activeTab, setActiveTab] = useState<"zones" | "plants">("zones");
+  const gardens = useAppStore((state) => state.gardens);
+  const plantTypeInfos = useAppStore((state) => state.plantTypeInfos);
+  const sensorSummaries = useAppStore((state) => state.sensorSummaries);
 
   return (
     <div>
-      <Topbar title="Khu vườn" subtitle="Quản lý & giám sát 3 khu canh tác" />
+      <Topbar title="Khu vườn" subtitle={`Quản lý & giám sát ${gardens.length} khu canh tác`} />
       <div className="p-8 space-y-6">
-        <div className="flex gap-1 border-b border-[#E2E8E4]">
-          {[
-            { id: "zones", label: "Khu vườn" },
-            { id: "plants", label: "Loại cây trồng" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as "zones" | "plants")}
-              className={cn(
-                "px-4 py-2.5 text-[0.875rem] font-medium border-b-2 transition-colors -mb-px",
-                activeTab === tab.id
-                  ? "border-[#1B4332] text-[#1B4332]"
-                  : "border-transparent text-[#5C7A6A] hover:text-[#1A2E1F]"
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {gardens.length === 0 && activeTab === "zones" ? (
+          <ErrorState
+            title="Chưa có khu vườn"
+            description="Tạo một khu vườn từ chi tiết trang nông trại để bắt đầu giám sát."
+          />
+        ) : (
+          <>
+            <div className="flex gap-1 border-b border-[#E2E8E4]">
+              {[
+                { id: "zones", label: "Khu vườn" },
+                { id: "plants", label: "Loại cây trồng" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as "zones" | "plants")}
+                  className={cn(
+                    "px-4 py-2.5 text-[0.875rem] font-medium border-b-2 transition-colors -mb-px",
+                    activeTab === tab.id
+                      ? "border-[#1B4332] text-[#1B4332]"
+                      : "border-transparent text-[#5C7A6A] hover:text-[#1A2E1F]"
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
         {activeTab === "zones" && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {gardens.map((garden) => {
-              const sensors = sensorSummaries.find((s) => s.gardenId === garden.id)!;
+              const sensors = sensorSummaries.find((s) => s.gardenId === garden.id)
+                ?? buildFallbackSensorSummary(garden.id, garden.plantType);
+              const detailHref = garden.farmId ? `/farms/${garden.farmId}/gardens/${garden.id}` : `/gardens/${garden.id}`;
               return (
                 <div key={garden.id} className="group">
                   <GardenStation garden={garden} sensors={sensors} />
                   <div className="mt-2 flex justify-end">
                     <Link
-                      href={`/gardens/${garden.id}`}
+                      href={detailHref}
                       className="flex items-center gap-1.5 text-[0.8125rem] text-[#1B4332] font-semibold hover:underline"
                     >
                       <MapPin size={13} /> Xem chi tiết <ArrowRight size={13} />
@@ -112,6 +126,8 @@ export default function GardensPage() {
               </div>
             ))}
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

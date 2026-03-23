@@ -1,13 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Badge } from "@/components/shared/index";
-import { backupRecords } from "@/lib/mockData";
 import { useAppStore } from "@/lib/store";
 import { cn, formatDateTime, timeAgo } from "@/lib/utils";
 import type { BackupRecord } from "@/types";
 import { DatabaseBackup, Download, HardDrive, RefreshCw, RotateCcw, TriangleAlert } from "lucide-react";
+
+const BACKUP_PAYLOADS_STORAGE_KEY = "nongtech-backup-payloads-v1";
+
+function loadBackupPayloads(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(BACKUP_PAYLOADS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveBackupPayloads(payloads: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(BACKUP_PAYLOADS_STORAGE_KEY, JSON.stringify(payloads));
+}
 
 const statusVariant: Record<BackupRecord["status"], "ok" | "warn" | "danger" | "info"> = {
   success: "ok",
@@ -28,9 +46,21 @@ const typeLabel: Record<BackupRecord["type"], string> = {
 
 export default function BackupPage() {
   const addToast = useAppStore((state) => state.addToast);
-  const [records, setRecords] = useState<BackupRecord[]>(backupRecords);
+  const records = useAppStore((state) => state.backupRecords);
+  const addBackupRecord = useAppStore((state) => state.addBackupRecord);
+  const updateBackupRecord = useAppStore((state) => state.updateBackupRecord);
+  const addLog = useAppStore((state) => state.addLog);
+  const exportRuntimeDataJson = useAppStore((state) => state.exportRuntimeDataJson);
+  const previewRuntimeDataJson = useAppStore((state) => state.previewRuntimeDataJson);
+  const importRuntimeDataJson = useAppStore((state) => state.importRuntimeDataJson);
+  const loggedInUser = useAppStore((state) => state.loggedInUser);
   const [isRunningBackup, setIsRunningBackup] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [backupPayloads, setBackupPayloads] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setBackupPayloads(loadBackupPayloads());
+  }, []);
 
   const totalStorage = records
     .map((record) => Number.parseFloat(record.fileSize))
@@ -56,22 +86,135 @@ export default function BackupPage() {
 
     window.setTimeout(() => {
       const createdAt = new Date().toISOString();
+      const payload = exportRuntimeDataJson();
+      const sizeInMb = (new Blob([payload], { type: "application/json" }).size / (1024 * 1024)).toFixed(1);
+      const backupId = `bk${Date.now()}`;
       const newRecord: BackupRecord = {
-        id: `bk${Date.now()}`,
+        id: backupId,
         type: "manual",
         status: "success",
         createdAt,
-        fileSize: "14.6 MB",
-        fileName: `backup_${createdAt.slice(0, 10).replaceAll("-", "")}_${createdAt.slice(11, 16).replace(":", "")}.sql.gz`,
-        createdBy: "Nguyễn Văn An",
-        note: "Backup thủ công từ giao diện quản trị",
+        fileSize: `${sizeInMb} MB`,
+        fileName: `backup_${createdAt.slice(0, 10).replaceAll("-", "")}_${createdAt.slice(11, 16).replace(":", "")}.runtime.json`,
+        createdBy: loggedInUser?.name ?? "System Admin",
+        note: "Backup runtime dữ liệu từ giao diện quản trị",
       };
 
-      setRecords((current) => [newRecord, ...current]);
+      const nextPayloads = { ...loadBackupPayloads(), [backupId]: payload };
+      saveBackupPayloads(nextPayloads);
+      setBackupPayloads(nextPayloads);
+
+      addBackupRecord(newRecord);
+      addLog({
+        id: `log_${Date.now()}`,
+        actionType: "CONFIG_CHANGE",
+        description: `Tạo bản sao lưu thủ công ${newRecord.id.toUpperCase()}`,
+        userId: loggedInUser?.id ?? "u1",
+        userName: loggedInUser?.name ?? "System Admin",
+        timestamp: new Date().toISOString(),
+      });
       setIsRunningBackup(false);
       setProgress(0);
-      addToast({ type: "success", message: "Đã tạo bản sao lưu mới" });
+      addToast({ type: "success", message: "Đã tạo bản sao lưu runtime mới" });
     }, 2500);
+  };
+
+  const handleRetryBackup = (record: BackupRecord) => {
+    updateBackupRecord(record.id, {
+      status: "in_progress",
+      note: "Dang retry backup...",
+    });
+
+    window.setTimeout(() => {
+      updateBackupRecord(record.id, {
+        status: "success",
+        fileSize: record.fileSize === "0 MB" ? "11.2 MB" : record.fileSize,
+        note: `Retry thành công lúc ${formatDateTime(new Date().toISOString())}`,
+      });
+      addLog({
+        id: `log_${Date.now()}`,
+        actionType: "CONFIG_CHANGE",
+        description: `Retry backup ${record.id.toUpperCase()} thành công`,
+        userId: loggedInUser?.id ?? "u1",
+        userName: loggedInUser?.name ?? "System Admin",
+        timestamp: new Date().toISOString(),
+      });
+      addToast({ type: "success", message: `Đã retry thành công ${record.id.toUpperCase()}` });
+    }, 1200);
+  };
+
+  const handleRestoreBackup = (record: BackupRecord) => {
+    const payload = backupPayloads[record.id];
+    if (!payload) {
+      addToast({ type: "warning", message: `Không tìm thấy payload cho ${record.id.toUpperCase()} trong trình duyệt hiện tại` });
+      return;
+    }
+
+    const preview = previewRuntimeDataJson(payload);
+    if (!preview.ok || !preview.preview) {
+      addToast({ type: "error", message: "Payload backup không hợp lệ, không thể khôi phục" });
+      updateBackupRecord(record.id, {
+        status: "failed",
+        note: "Khôi phục thất bại: payload không hợp lệ",
+      });
+      return;
+    }
+
+    const confirmRestore = window.confirm(
+      `Khôi phục backup ${record.id.toUpperCase()}?\n\n` +
+      `Version: ${preview.preview.version}\n` +
+      `Farm: ${preview.preview.counts.farms} · Garden: ${preview.preview.counts.gardens} · Device: ${preview.preview.counts.devices}`
+    );
+    if (!confirmRestore) return;
+
+    updateBackupRecord(record.id, {
+      status: "in_progress",
+      note: "Đang khôi phục dữ liệu runtime...",
+    });
+    addToast({ type: "warning", message: `Đang khôi phục từ ${record.id.toUpperCase()}` });
+
+    window.setTimeout(() => {
+      const restored = importRuntimeDataJson(payload);
+      updateBackupRecord(record.id, {
+        status: restored.ok ? "success" : "failed",
+        note: restored.ok
+          ? `Đã khôi phục bởi ${loggedInUser?.name ?? "System Admin"}`
+          : `Khôi phục thất bại: ${restored.message}`,
+      });
+      addLog({
+        id: `log_${Date.now()}`,
+        actionType: "CONFIG_CHANGE",
+        description: `${restored.ok ? "Khôi phục" : "Khôi phục thất bại"} backup ${record.id.toUpperCase()}`,
+        userId: loggedInUser?.id ?? "u1",
+        userName: loggedInUser?.name ?? "System Admin",
+        timestamp: new Date().toISOString(),
+      });
+      addToast({
+        type: restored.ok ? "success" : "error",
+        message: restored.ok
+          ? `Khôi phục ${record.id.toUpperCase()} thành công`
+          : `Khôi phục ${record.id.toUpperCase()} thất bại`,
+      });
+    }, 1800);
+  };
+
+  const handleDownloadBackup = (record: BackupRecord) => {
+    const payload = backupPayloads[record.id];
+    if (!payload) {
+      addToast({ type: "warning", message: `Backup ${record.id.toUpperCase()} không có payload local để tải xuống` });
+      return;
+    }
+
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = record.fileName.endsWith(".json") ? record.fileName : `${record.fileName}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    addToast({ type: "info", message: `Đã tải xuống ${record.fileName}` });
   };
 
   return (
@@ -147,7 +290,7 @@ export default function BackupPage() {
                 />
               </div>
               <p className="text-[0.75rem] text-[#5C7A6A] mt-3">
-                Hệ thống hiện hỗ trợ mô phỏng backup thủ công. Backend lưu trữ sẽ được nối ở giai đoạn triển khai sau.
+                Backup thủ công đang lưu payload runtime cục bộ trên trình duyệt để tải xuống và khôi phục ngay.
               </p>
             </div>
           </div>
@@ -198,19 +341,27 @@ export default function BackupPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => addToast({ type: "info", message: `Đã tải xuống ${record.fileName}` })}
+                          onClick={() => handleDownloadBackup(record)}
                           className="px-2.5 py-2 rounded-[8px] border border-[#E2E8E4] text-[#1B4332] hover:bg-[#F0FAF3] transition-colors"
                           disabled={record.status !== "success"}
                         >
                           <Download size={14} />
                         </button>
                         <button
-                          onClick={() => addToast({ type: "warning", message: `Đã gửi yêu cầu khôi phục từ ${record.id.toUpperCase()}` })}
+                          onClick={() => handleRestoreBackup(record)}
                           className="px-2.5 py-2 rounded-[8px] border border-[#E2E8E4] text-[#1B4332] hover:bg-[#F0FAF3] transition-colors"
                           disabled={record.status !== "success"}
                         >
                           <RotateCcw size={14} />
                         </button>
+                        {record.status === "failed" && (
+                          <button
+                            onClick={() => handleRetryBackup(record)}
+                            className="px-2.5 py-2 rounded-[8px] border border-[#E2E8E4] text-[#C0392B] hover:bg-[#FDF0EE] transition-colors"
+                          >
+                            <RefreshCw size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

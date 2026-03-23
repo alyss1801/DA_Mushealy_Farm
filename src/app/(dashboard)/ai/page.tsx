@@ -1,21 +1,43 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { Upload, BrainCircuit, CheckCircle, Leaf, Droplets, Bug, Microscope } from "lucide-react";
 import { Topbar } from "@/components/layout/Topbar";
-import { aiAnalyses } from "@/lib/mockData";
+import { ErrorState, LoadingState } from "@/components/shared/ErrorStates";
+import { useAppStore } from "@/lib/store";
 import { cn, timeAgo } from "@/lib/utils";
 
 type SubTab = "detection" | "classification";
 
 export default function AIPage() {
+  const currentFarmId = useAppStore((state) => state.currentFarmId);
+  const gardens = useAppStore((state) => state.gardens);
+  const aiAnalyses = useAppStore((state) => state.aiAnalyses);
+  const addAiAnalysis = useAppStore((state) => state.addAiAnalysis);
+  const addLog = useAppStore((state) => state.addLog);
+  const addToast = useAppStore((state) => state.addToast);
+  const loggedInUser = useAppStore((state) => state.loggedInUser);
+
   const [subTab, setSubTab] = useState<SubTab>("detection");
   const [dragOver, setDragOver] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [selectedGardenId, setSelectedGardenId] = useState<string>("all");
   const [result, setResult] = useState<null | { label: string; confidence: number; recommendation: string }>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const farmGardens = useMemo(() => {
+    if (!currentFarmId) return gardens;
+    return gardens.filter((garden) => garden.farmId === currentFarmId);
+  }, [gardens, currentFarmId]);
+
+  const visibleAnalyses = useMemo(() => {
+    const allowedGardenIds = new Set(farmGardens.map((garden) => garden.id));
+    const base = aiAnalyses.filter((analysis) => allowedGardenIds.has(analysis.gardenId));
+    if (selectedGardenId === "all") return base;
+    return base.filter((analysis) => analysis.gardenId === selectedGardenId);
+  }, [aiAnalyses, farmGardens, selectedGardenId]);
 
   const handleFile = (file: File) => {
     const url = URL.createObjectURL(file);
@@ -31,17 +53,69 @@ export default function AIPage() {
   };
 
   const handleAnalyze = async () => {
+    const targetGarden = selectedGardenId === "all" ? farmGardens[0] : farmGardens.find((garden) => garden.id === selectedGardenId);
+    if (!targetGarden) {
+      addToast({ type: "warning", message: "Vui lòng chọn khu vườn để lưu kết quả AI" });
+      return;
+    }
+
     setAnalyzing(true);
     await new Promise((r) => setTimeout(r, 1500));
-    setResult({
-      label: "Cây phát triển bình thường",
-      confidence: 91.5,
-      recommendation: "Không cần can thiệp. Tiếp tục chế độ chăm sóc hiện tại.",
+
+    const generated = subTab === "classification"
+      ? {
+          label: "Phân loại đạt mức thu hoạch",
+          confidence: 88.4,
+          recommendation: "Ưu tiên thu hoạch lứa 1 trong 24 giờ tới, giữ tưới nhẹ.",
+        }
+      : {
+          label: "Cây phát triển bình thường",
+          confidence: 91.5,
+          recommendation: "Không cần can thiệp. Tiếp tục chế độ chăm sóc hiện tại.",
+        };
+
+    const nextAnalysis = {
+      id: `ai_${Date.now()}`,
+      imageUrl: previewUrl ?? "",
+      gardenId: targetGarden.id,
+      gardenName: targetGarden.name,
+      result: generated.label,
+      confidence: generated.confidence,
+      recommendation: generated.recommendation,
+      timestamp: new Date().toISOString(),
+    };
+
+    addAiAnalysis(nextAnalysis);
+    addLog({
+      id: `log_${Date.now()}`,
+      actionType: "CONFIG_CHANGE",
+      description: `AI phan tich anh tai ${targetGarden.name}`,
+      userId: loggedInUser?.id ?? "u1",
+      userName: loggedInUser?.name ?? "System Admin",
+      gardenId: targetGarden.id,
+      gardenName: targetGarden.name,
+      timestamp: new Date().toISOString(),
     });
+    addToast({ type: "success", message: `Đã lưu kết quả AI cho ${targetGarden.name}` });
+    setResult(generated);
     setAnalyzing(false);
   };
 
   const getConfidenceColor = (c: number) => (c >= 80 ? "#27AE60" : c >= 60 ? "#E67E22" : "#C0392B");
+
+  if (farmGardens.length === 0) {
+    return (
+      <div>
+        <Topbar title="AI Module" subtitle="Phân tích hình ảnh cây trồng bằng trí tuệ nhân tạo" />
+        <div className="p-8 max-w-3xl">
+          <ErrorState
+            title="Chưa có khu vườn để phân tích AI"
+            description="Hãy tạo khu vườn trong nông trại hiện tại trước khi tải ảnh phân tích."
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -72,6 +146,20 @@ export default function AIPage() {
           {/* Upload zone */}
           <div className="space-y-4">
             <h3 className="font-semibold text-[1rem] text-[#1A2E1F]">Tải ảnh lên để phân tích</h3>
+
+            <div>
+              <label className="block text-[0.6875rem] uppercase tracking-wide text-[#5C7A6A] font-semibold mb-1.5">Khu vườn áp dụng</label>
+              <select
+                className="input-field"
+                value={selectedGardenId}
+                onChange={(event) => setSelectedGardenId(event.target.value)}
+              >
+                <option value="all">Chọn tự động theo farm</option>
+                {farmGardens.map((garden) => (
+                  <option key={garden.id} value={garden.id}>{garden.name}</option>
+                ))}
+              </select>
+            </div>
 
             <div
               className={cn(
@@ -125,7 +213,8 @@ export default function AIPage() {
             )}
 
             {/* Result card */}
-            {result && (
+            {analyzing && <LoadingState message="Mô hình AI đang xử lý ảnh và tổng hợp khuyến nghị..." />}
+            {result && !analyzing && (
               <div className="card p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <CheckCircle size={18} className="text-[#27AE60]" />
@@ -165,7 +254,7 @@ export default function AIPage() {
           <div>
             <h3 className="font-semibold text-[1rem] text-[#1A2E1F] mb-4">Lịch sử phân tích</h3>
             <div className="space-y-3">
-              {aiAnalyses.map((a) => {
+              {visibleAnalyses.map((a) => {
                 const isHealthy = a.result.toLowerCase().includes("bình thường");
                 const isWater = a.result.toLowerCase().includes("nước") || a.result.toLowerCase().includes("tưới");
                 const isPest = a.result.toLowerCase().includes("sâu") || a.result.toLowerCase().includes("bệnh");
@@ -201,6 +290,11 @@ export default function AIPage() {
                 </div>
                 );
               })}
+              {visibleAnalyses.length === 0 && (
+                <div className="card p-4">
+                  <p className="text-[0.8125rem] text-[#5C7A6A]">Chưa có lịch sử AI cho phạm vi nông trại hiện tại.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { useAppStore } from "@/lib/store";
-import { currentUser as fallbackUser } from "@/lib/mockData";
 import { Eye, EyeOff, CheckCircle2, ChevronDown } from "lucide-react";
+import { FormErrorBanner, InlineFieldError } from "@/components/shared";
+import { isValidPhone } from "@/lib/validation";
 
 function getInitialsColor(name: string) {
   const palette = ["#1B4332", "#2D6A4F", "#40916C", "#1565C0", "#6A1565", "#C0531B"];
@@ -19,8 +20,14 @@ function getInitials(name: string) {
 
 export default function ProfilePage() {
   const loggedInUser = useAppStore((s) => s.loggedInUser);
-  const currentUser = loggedInUser ?? fallbackUser;
-  const [phone, setPhone] = useState("0901 234 567");
+  const users = useAppStore((s) => s.users);
+  const updateUser = useAppStore((s) => s.updateUser);
+  const userPasswords = useAppStore((s) => s.userPasswords);
+  const setUserPassword = useAppStore((s) => s.setUserPassword);
+  const addToast = useAppStore((s) => s.addToast);
+  const currentUser = loggedInUser ?? users[0];
+  const [name, setName] = useState(currentUser.name);
+  const [phone, setPhone] = useState(currentUser.phone ?? "");
   const [saved, setSaved] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [showCurrent, setShowCurrent] = useState(false);
@@ -30,6 +37,18 @@ export default function ProfilePage() {
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [pwSaved, setPwSaved] = useState(false);
+  const [pwError, setPwError] = useState("");
+  const [infoError, setInfoError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  if (!currentUser) {
+    return (
+      <div>
+        <Topbar title="Hồ sơ cá nhân" subtitle="Không tìm thấy người dùng" />
+      </div>
+    );
+  }
 
   const avatarColor = getInitialsColor(currentUser.name);
   const initials = getInitials(currentUser.name);
@@ -37,16 +56,50 @@ export default function ProfilePage() {
   const roleLabel = roleLabelMap[currentUser.role] ?? currentUser.role;
 
   function handleSaveInfo() {
+    const nextNameError = name.trim() ? null : "Họ và tên là bắt buộc.";
+    const nextPhoneError = isValidPhone(phone) ? null : "Số điện thoại không hợp lệ.";
+    setNameError(nextNameError);
+    setPhoneError(nextPhoneError);
+
+    if (nextNameError || nextPhoneError) {
+      setInfoError("Vui lòng kiểm tra lại thông tin cá nhân trước khi lưu.");
+      return;
+    }
+
+    if (loggedInUser) {
+      updateUser(loggedInUser.id, {
+        name: name.trim() || loggedInUser.name,
+        phone: phone.trim() || undefined,
+      });
+    }
+    addToast({ type: "success", message: "Đã cập nhật thông tin cá nhân" });
+    setInfoError(null);
+    setNameError(null);
+    setPhoneError(null);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }
 
   function handleChangePw() {
-    if (newPw && newPw === confirmPw) {
-      setPwSaved(true);
-      setCurrentPw(""); setNewPw(""); setConfirmPw("");
-      setTimeout(() => setPwSaved(false), 2500);
+    setPwError("");
+    if (!loggedInUser) {
+      setPwError("Bạn cần đăng nhập để đổi mật khẩu.");
+      return;
     }
+    const expectedCurrentPw = userPasswords[loggedInUser.id] ?? "123456";
+    if (currentPw !== expectedCurrentPw) {
+      setPwError("Mật khẩu hiện tại không đúng.");
+      return;
+    }
+    if (!newPw || newPw !== confirmPw) {
+      setPwError("Mật khẩu mới và xác nhận chưa khớp.");
+      return;
+    }
+    setUserPassword(loggedInUser.id, newPw);
+    addToast({ type: "success", message: "Đã cập nhật mật khẩu" });
+    setPwSaved(true);
+    setCurrentPw(""); setNewPw(""); setConfirmPw("");
+    setTimeout(() => setPwSaved(false), 2500);
   }
 
   return (
@@ -75,9 +128,19 @@ export default function ProfilePage() {
         <div className="card p-6 mb-4">
           <h3 className="font-semibold text-[#1A2E1F] mb-4">Thông tin cá nhân</h3>
           <div className="space-y-4">
+            <FormErrorBanner message={infoError} />
             <div>
               <label className="text-[0.75rem] font-medium text-[#5C7A6A] uppercase tracking-wide">Họ và tên</label>
-              <input className="input-field mt-1 w-full" defaultValue={currentUser.name} readOnly />
+              <input
+                className={`input-field mt-1 w-full ${nameError ? "border-[#C0392B]" : ""}`}
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setNameError(null);
+                  setInfoError(null);
+                }}
+              />
+              <InlineFieldError message={nameError} />
             </div>
             <div>
               <label className="text-[0.75rem] font-medium text-[#5C7A6A] uppercase tracking-wide">Email</label>
@@ -86,10 +149,15 @@ export default function ProfilePage() {
             <div>
               <label className="text-[0.75rem] font-medium text-[#5C7A6A] uppercase tracking-wide">Số điện thoại</label>
               <input
-                className="input-field mt-1 w-full"
+                className={`input-field mt-1 w-full ${phoneError ? "border-[#C0392B]" : ""}`}
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => {
+                  setPhone(e.target.value);
+                  setPhoneError(null);
+                  setInfoError(null);
+                }}
               />
+              <InlineFieldError message={phoneError} />
             </div>
             <div>
               <label className="text-[0.75rem] font-medium text-[#5C7A6A] uppercase tracking-wide">Vườn phụ trách</label>
@@ -148,6 +216,7 @@ export default function ProfilePage() {
               {confirmPw && newPw && confirmPw !== newPw && (
                 <p className="text-[0.75rem] text-[#C0392B]">Mật khẩu xác nhận không khớp</p>
               )}
+              {pwError && <p className="text-[0.75rem] text-[#C0392B]">{pwError}</p>}
               <div className="flex items-center gap-3 pt-1">
                 <button
                   className="btn-primary"

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { BrainCircuit, MessageCircle, X, Send, Wrench, Bot, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAppStore } from "@/lib/store";
 
 interface ChatMessage {
   id: string;
@@ -54,15 +55,27 @@ type ChatType = "ai" | "tech";
 
 interface PanelProps {
   type: ChatType;
+  farmContext: string;
   onClose: () => void;
 }
 
-function ChatPanel({ type, onClose }: PanelProps) {
+function ChatPanel({ type, farmContext, onClose }: PanelProps) {
   const isAI = type === "ai";
+  const storageKey = isAI ? "nongtech-chat-history-ai" : "nongtech-chat-history-tech";
 
-  const [messages, setMessages] = useState<ChatMessage[]>(
-    isAI ? AI_INIT : TECH_INIT
-  );
+  const getInitialMessages = () => {
+    if (typeof window === "undefined") return isAI ? AI_INIT : TECH_INIT;
+    const cached = window.localStorage.getItem(storageKey);
+    if (!cached) return isAI ? AI_INIT : TECH_INIT;
+    try {
+      const parsed = JSON.parse(cached) as ChatMessage[];
+      return parsed.length ? parsed : isAI ? AI_INIT : TECH_INIT;
+    } catch {
+      return isAI ? AI_INIT : TECH_INIT;
+    }
+  };
+
+  const [messages, setMessages] = useState<ChatMessage[]>(getInitialMessages);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -72,6 +85,11 @@ function ChatPanel({ type, onClose }: PanelProps) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(storageKey, JSON.stringify(messages.slice(-50)));
+  }, [messages, storageKey]);
 
   const send = async () => {
     const text = input.trim();
@@ -128,6 +146,11 @@ function ChatPanel({ type, onClose }: PanelProps) {
         >
           <X size={18} />
         </button>
+      </div>
+      <div className="px-4 py-2 border-b border-[#E2E8E4] bg-white">
+        <p className="text-[0.6875rem] text-[#5C7A6A]">
+          Bối cảnh: <span className="font-semibold text-[#1A2E1F]">{farmContext}</span>
+        </p>
       </div>
 
       {/* Messages */}
@@ -226,6 +249,10 @@ function ChatPanel({ type, onClose }: PanelProps) {
 
 export function FloatingChat() {
   const [openPanel, setOpenPanel] = useState<ChatType | null>(null);
+  const farms = useAppStore((state) => state.farms);
+  const currentFarmId = useAppStore((state) => state.currentFarmId);
+  const activeFarm = farms.find((farm) => farm.id === currentFarmId);
+  const farmContext = activeFarm ? `${activeFarm.name} (${activeFarm.location})` : "Toàn hệ thống";
 
   const toggle = (type: ChatType) =>
     setOpenPanel((prev) => (prev === type ? null : type));
@@ -238,7 +265,7 @@ export function FloatingChat() {
           className="w-[340px] h-[480px] rounded-[16px] shadow-[0_8px_40px_rgba(0,0,0,0.18)] flex flex-col overflow-hidden border border-[#E2E8E4] animate-in fade-in slide-in-from-bottom-4 duration-200"
           style={{ background: "white" }}
         >
-          <ChatPanel type={openPanel} onClose={() => setOpenPanel(null)} />
+          <ChatPanel type={openPanel} farmContext={farmContext} onClose={() => setOpenPanel(null)} />
         </div>
       )}
 
