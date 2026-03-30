@@ -28,6 +28,9 @@ yarn-error.log*
 # local env files
 .env*.local
 
+# supabase local temp metadata
+supabase/.temp/
+
 # vercel
 .vercel
 
